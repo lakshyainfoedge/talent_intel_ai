@@ -1,0 +1,17 @@
+# ignore the environmental file
+env
+.env
+.env.*
+ 
+# ignore build files
+node_modules
+dist
+.DS_Store
+ 
+# Cache used by TypeScript's incremental build
+*.tsbuildinfo
+ 
+# don't include the vscode setting
+.vscode/
+
+service_account.json

@@ -108,7 +108,7 @@ async def create_job_description(
         content = await fetch_job_description(url)
         # Parse JD using Gemini
         parsed_data = parse_jd_with_gemini(content)
-        console.log("Parsed JD Data:", parsed_data)
+        # console.log("Parsed JD Data:", parsed_data)
         # Create job description document
         jd_data = {
             "url": url,
@@ -119,7 +119,9 @@ async def create_job_description(
         # Save to database
         result = await collection.insert_one(jd_data)
         jd_data["id"] = str(result.inserted_id)
-        jd = JobDescription(**jd_data)
+        serialized_jd_data = db.serialize_doc(jd_data)
+        jd = JobDescription(**serialized_jd_data)
+    
         return jd
         
     except Exception as e:

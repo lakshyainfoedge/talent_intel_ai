@@ -212,6 +212,17 @@ def candidate_score(exp_sim, skill_overlap, traj, w):
     )
     return float(max(0.0, min(1.0, score))) * 100.0
 
+def extract_skills_from_bullets(bullets: List[str], jd_skills: List[str]) -> List[str]:
+    """
+    Very simple rule-based extractor: check if JD skills appear in experience bullets text.
+    """
+    bullets_text = " ".join(bullets).lower()
+    extracted = []
+    for skill in jd_skills:
+        if skill.lower() in bullets_text:
+            extracted.append(skill)
+    return list(set(extracted))
+
 @router.post("/batch-score", response_model=List[dict])
 async def batch_score_resumes(
     jd_id: str = Body(...),
@@ -271,9 +282,11 @@ async def batch_score_resumes(
         ai_pct = int(ai_struct.get("ai_likelihood_percent", 0))
         ai_pct = max(0, min(100, ai_pct))
         validity_pct = 100 - ai_pct
+        extracted_skills = extract_skills_from_bullets(res_struct.get("experience_bullets", []), jd_req_skills)
+        combined_skills = list(set(res_struct.get("skills", [])) | set(extracted_skills))
 
         exp_sim = exp_similarity(jd_resp_text, res_text)
-        skill_overlap = skills_overlap_score(jd_req_skills, res_struct.get("skills", []) if res_struct else [])
+        skill_overlap = skills_overlap_score(jd_req_skills, combined_skills)
         traj = trajectory_alignment(jd_struct.get("seniority", "mid") if jd_struct else "mid",
                                    res_struct.get("seniority", "mid") if res_struct else "mid")
         score = candidate_score(exp_sim, skill_overlap, traj, weights)
