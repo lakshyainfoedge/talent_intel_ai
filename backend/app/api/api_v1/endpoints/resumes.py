@@ -97,7 +97,6 @@ async def upload_resumes_batch(
     collection = db.get_collection("resumes")
     results = []
     for file in files:
-        print(f"Processing file: {file}")
         content = await file.read()
         file_hash = hashlib.sha256(content).hexdigest()
         existing = await collection.find_one({"file_hash": file_hash})

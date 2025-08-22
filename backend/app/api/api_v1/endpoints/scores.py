@@ -10,7 +10,7 @@ from vertexai.generative_models import GenerativeModel, Part
 import os
 import json
 from bson import ObjectId
-
+from rapidfuzz import fuzz
 
 router = APIRouter()
 
@@ -181,12 +181,26 @@ def gemini_json(gemini: GenerativeModel, system_prompt: str, text: str) -> dict:
     return {}
 
 def skills_overlap_score(jd_skills, res_skills):
-    if not jd_skills:
+    """
+    Fuzzy skill overlap: for each JD skill, find the best fuzzy match in resume skills.
+    Give partial credit for similar skills.
+    """
+    if not jd_skills or not res_skills:
         return 0.0
-    jd = set([s.strip().lower() for s in jd_skills])
-    rs = set([s.strip().lower() for s in res_skills])
-    overlap = jd.intersection(rs)
-    return len(overlap) / max(1, len(jd))
+    jd = [s.strip().lower() for s in jd_skills]
+    rs = [s.strip().lower() for s in res_skills]
+    total = 0.0
+    for jd_skill in jd:
+        best = 0.0
+        for res_skill in rs:
+            # Use both ratio and partial_ratio for better fuzzy matching
+            ratio = fuzz.ratio(jd_skill, res_skill) / 100.0
+            partial = fuzz.partial_ratio(jd_skill, res_skill) / 100.0
+            score = max(ratio, partial)
+            if score > best:
+                best = score
+        total += best
+    return total / max(1, len(jd))
 
 SENIORITY_MAP = {
     "intern": 0, "junior": 1, "mid": 2, "senior": 3, "lead": 4,
@@ -248,13 +262,18 @@ async def batch_score_resumes(
         
     # print("JD Text:", jd_resp_text)
 
-    # Dummy embedding: use word overlap as a proxy for experience similarity
+    # Improved embedding: use fuzzy token set ratio for experience similarity
     def exp_similarity(jd_text, res_text):
-        jd_words = set(jd_text.lower().split())
-        res_words = set(res_text.lower().split())
-        if not jd_words:
+        if not jd_text or not res_text:
             return 0.0
-        return len(jd_words & res_words) / len(jd_words)
+        # Combine token_set_ratio and partial_ratio for a more forgiving similarity
+        tsr = fuzz.token_set_ratio(jd_text, res_text)
+        pr = fuzz.partial_ratio(jd_text, res_text)
+        avg = (tsr + pr) / 2
+        # Non-linear scaling to boost mid-range scores
+        scaled = (avg / 100.0) ** 0.5  # sqrt scaling
+        # Apply a floor so even weak matches get a small score
+        return max(0.15, scaled)
 
     # Use provided weights or default
     if not weights:
@@ -272,7 +291,6 @@ async def batch_score_resumes(
     for resume_id in resume_ids:
         object_id = ObjectId(resume_id)
         resume = await resumes_collection.find_one({"_id": object_id})
-        print(f"Found resume: {resume}")
         if not resume:
             continue
         res_struct = resume.get("parsed_data", {})
@@ -281,7 +299,9 @@ async def batch_score_resumes(
         ai_struct = gemini_json(gemini, AI_DETECT_PROMPT, res_text)
         ai_pct = int(ai_struct.get("ai_likelihood_percent", 0))
         ai_pct = max(0, min(100, ai_pct))
-        validity_pct = 100 - ai_pct
+        # Improved AI validity: use a non-linear scale to avoid harsh penalty for moderate AI content
+        validity_pct = 100 - int((ai_pct ** 1.2) / (100 ** 0.2))  # softer penalty for moderate AI
+        validity_pct = max(0, min(100, validity_pct))
         extracted_skills = extract_skills_from_bullets(res_struct.get("experience_bullets", []), jd_req_skills)
         combined_skills = list(set(res_struct.get("skills", [])) | set(extracted_skills))
 
