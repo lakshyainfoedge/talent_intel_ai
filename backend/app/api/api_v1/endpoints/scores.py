@@ -8,6 +8,7 @@ from app.core.config import settings
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part
 import os
+import hashlib
 import json
 from bson import ObjectId
 from rapidfuzz import fuzz
@@ -50,10 +51,18 @@ async def calculate_score(
     
     # Get resume and JD data
     resumes_collection = db.get_collection("resumes")
-    resume = await resumes_collection.find_one({"_id": resume_id})
+    try:
+        resume_oid = ObjectId(resume_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid resume ID format")
+    resume = await resumes_collection.find_one({"_id": resume_oid})
     
     jd_collection = db.get_collection("job_descriptions")
-    jd = await jd_collection.find_one({"_id": jd_id})
+    try:
+        jd_oid = ObjectId(jd_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid job description ID format")
+    jd = await jd_collection.find_one({"_id": jd_oid})
     
     if not resume or not jd:
         raise HTTPException(status_code=404, detail="Resume or Job Description not found")
@@ -107,7 +116,11 @@ async def get_score(
     db: MongoDB = Depends(get_db)
 ):
     collection = db.get_collection("scores")
-    score = await collection.find_one({"_id": score_id})
+    try:
+        score_oid = ObjectId(score_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid score ID format")
+    score = await collection.find_one({"_id": score_oid})
     if not score:
         raise HTTPException(status_code=404, detail="Score not found")
     return db.serialize_doc(score)
@@ -279,6 +292,12 @@ async def batch_score_resumes(
     if not weights:
         weights = {"experience": 0.5, "skills": 0.35, "trajectory": 0.15}
 
+    # Stable hash for weights to key cache; round values to avoid float noise
+    def weights_signature(w: Dict[str, float]) -> str:
+        items = sorted((k, round(float(v), 6)) for k, v in w.items())
+        return hashlib.sha256(json.dumps(items).encode("utf-8")).hexdigest()
+    w_sig = weights_signature(weights)
+
     # Initialize Gemini for AI detection
     PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
     LOCATION = os.getenv("GOOGLE_CLOUD_REGION", "us-central1")
@@ -287,11 +306,32 @@ async def batch_score_resumes(
     gemini = GenerativeModel(GEMINI_MODEL_NAME)
 
     resumes_collection = db.get_collection("resumes")
+    scores_collection = db.get_collection("scores")
     rows = []
     for resume_id in resume_ids:
         object_id = ObjectId(resume_id)
         resume = await resumes_collection.find_one({"_id": object_id})
         if not resume:
+            continue
+        # Check cache: if a score for this JD and resume already exists, reuse it
+        existing = await scores_collection.find_one({
+            "resume_id": resume_id,
+            "jd_id": jd_id,
+            "weights_hash": w_sig,
+        })
+        if existing:
+            rows.append({
+                "resume_id": resume_id,
+                "file": resume.get("file_name", ""),
+                "parsed": resume.get("parsed_data", {}),
+                "ai": existing.get("ai", {}),
+                "ai_pct": existing.get("ai_pct", 0),
+                "validity_pct": existing.get("validity_pct", 100),
+                "exp_sim": existing.get("exp_sim", 0.0),
+                "skill_overlap": existing.get("skill_overlap", 0.0),
+                "trajectory": existing.get("trajectory", 0.0),
+                "score": existing.get("overall_score", existing.get("score", 0.0)),
+            })
             continue
         res_struct = resume.get("parsed_data", {})
         res_text = resume.get("content", {}).get("text", "")
@@ -311,6 +351,34 @@ async def batch_score_resumes(
                                    res_struct.get("seniority", "mid") if res_struct else "mid")
         score = candidate_score(exp_sim, skill_overlap, traj, weights)
 
+        # Persist the computed score in the scores collection for caching
+        db_doc = {
+            "resume_id": resume_id,
+            "jd_id": jd_id,
+            "overall_score": score,
+            "weights": {
+                "experience": float(weights.get("experience", 0.0)),
+                "skills": float(weights.get("skills", 0.0)),
+                "trajectory": float(weights.get("trajectory", 0.0)),
+            },
+            "weights_hash": w_sig,
+            "score_breakdown": {
+                "experience": exp_sim,
+                "skills": skill_overlap,
+                "trajectory": traj,
+                "ai_pct": ai_pct,
+                "validity_pct": validity_pct,
+            },
+            # Extra fields to make cache responses richer
+            "exp_sim": exp_sim,
+            "skill_overlap": skill_overlap,
+            "trajectory": traj,
+            "ai": ai_struct,
+            "ai_pct": ai_pct,
+            "validity_pct": validity_pct,
+        }
+        await scores_collection.insert_one(db_doc)
+
         rows.append({
             "resume_id": resume_id,
             "file": resume.get("file_name", ""),
@@ -323,4 +391,6 @@ async def batch_score_resumes(
             "trajectory": traj,
             "score": score,
         })
+    # Return in descending order by score
+    rows.sort(key=lambda r: r.get("score", 0.0), reverse=True)
     return rows
