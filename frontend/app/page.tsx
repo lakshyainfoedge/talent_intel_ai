@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,8 +21,12 @@ export default function Dashboard() {
   const [jdUrl, setJdUrl] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
+  // Refs
+  const reportRef = useRef<HTMLDivElement>(null);
+
   // UI / Data
   const [loading, setLoading] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const [results, setResults] = useState<any[]>([]);
   const [jdStruct, setJdStruct] = useState<any | null>(null);
   const [candidatesToShow, setCandidatesToShow] = useState<number>(10);
@@ -70,7 +76,36 @@ export default function Dashboard() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
-    setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+
+    // Limit to 10 files at a time
+    if (e.target.files.length > 10) {
+      alert("Please select up to 10 files at a time.");
+      return;
+    }
+
+    const validFiles = Array.from(e.target.files).filter((file) => {
+      const validTypes = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ];
+      const fileExt = file.name.split(".").pop()?.toLowerCase();
+      const isValidType =
+        validTypes.includes(file.type) ||
+        [".pdf", ".doc", ".docx"].includes("." + fileExt);
+
+      if (!isValidType) {
+        alert(
+          `File '${file.name}' is not a valid file type. Only PDF and Word documents are allowed.`
+        );
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length > 0) {
+      setFiles((prev) => [...prev, ...validFiles]);
+    }
   };
 
   const handleRemoveFile = (index: number) => {
@@ -155,6 +190,112 @@ export default function Dashboard() {
   // Helpers to read potentially missing fields safely
   const pct = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
   const as01 = (v: number) => Math.max(0, Math.min(1, v));
+
+  // Generate and download PDF report
+  const downloadPdfReport = () => {
+    if (!results.length) return;
+
+    setGeneratingPdf(true);
+
+    try {
+      const doc = new jsPDF("p", "pt", "a4");
+      const title = "Candidate Evaluation Report";
+      const date = new Date().toLocaleDateString();
+
+      // Add title and date
+      doc.setFontSize(20);
+      doc.text(title, 40, 40);
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Generated on: ${date}`, 40, 60);
+
+      // Prepare table data
+      const tableColumn = [
+        "Rank",
+        "Candidate",
+        "Score",
+        "Exp. Match",
+        "Skills",
+        "Trajectory",
+      ];
+
+      const tableRows = results.map((r: any, idx: number) => {
+        const name =
+          r?.parsed?.name || r?.parsed_data?.name || `Candidate ${idx + 1}`;
+        const score = typeof r.score === "number" ? r.score : 0;
+        const expSim = typeof r.exp_sim === "number" ? r.exp_sim : 0;
+        const skOverlap =
+          typeof r.skill_overlap === "number" ? r.skill_overlap : 0;
+        const traj = typeof r.trajectory === "number" ? r.trajectory : 0;
+
+        return [
+          `#${idx + 1}`,
+          name,
+          `${pct(score)}%`,
+          `${pct(expSim * 100)}%`,
+          `${pct(skOverlap * 100)}%`,
+          `${pct(traj * 100)}%`,
+        ];
+      });
+
+      // Add table
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 80,
+        styles: {
+          fontSize: 8,
+          cellPadding: 3,
+          overflow: "linebreak",
+          lineWidth: 0.1,
+          lineColor: [220, 220, 220],
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245],
+        },
+        margin: { top: 10 },
+      });
+
+      // Add summary statistics
+      const avgScore =
+        results.reduce((acc, r) => acc + (r.score || 0), 0) / results.length;
+      const topScore = Math.max(...results.map((r: any) => r.score || 0));
+
+      doc.setFontSize(12);
+      doc.setTextColor(0, 0, 0);
+      doc.text("Summary Statistics", 40, doc?.lastAutoTable?.finalY + 30);
+      doc.setFontSize(10);
+      doc.text(
+        `Total Candidates: ${results.length}`,
+        60,
+        doc?.lastAutoTable?.finalY + 50
+      );
+      doc.text(
+        `Average Score: ${avgScore.toFixed(1)}%`,
+        60,
+        doc?.lastAutoTable?.finalY + 70
+      );
+      doc.text(
+        `Top Score: ${topScore.toFixed(1)}%`,
+        60,
+        doc?.lastAutoTable?.finalY + 90
+      );
+
+      // Save the PDF
+      doc.save(
+        `candidate-report-${new Date().toISOString().split("T")[0]}.pdf`
+      );
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
 
   return (
     <div className="p-6 md:p-8 space-y-6">
@@ -282,12 +423,47 @@ export default function Dashboard() {
               <label className="text-sm font-medium">
                 Upload candidate resumes (PDF, DOCX, TXT)
               </label>
-              <Input
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-                onChange={handleFileUpload}
-              />
+              <div className="space-y-2">
+                <div className="flex items-center justify-center w-full">
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted/50 hover:bg-muted/70 transition-colors">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <svg
+                        className="w-8 h-8 mb-2 text-muted-foreground"
+                        aria-hidden="true"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 20 16"
+                      >
+                        <path
+                          stroke="currentColor"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"
+                        />
+                      </svg>
+                      <p className="mb-2 text-sm text-muted-foreground">
+                        <span className="font-semibold">Click to upload</span>{" "}
+                        or drag and drop
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        PDF or Word documents (MAX. 10 files at a time)
+                      </p>
+                    </div>
+                    <Input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Accepted formats: PDF (.pdf), Word (.doc, .docx)
+                </p>
+              </div>
               {files.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {files.map((f, i) => (
@@ -411,6 +587,15 @@ export default function Dashboard() {
                 ))}
               </select>
               <span className="text-sm text-muted-foreground">candidates</span>
+              <Button
+                onClick={downloadPdfReport}
+                disabled={results.length === 0 || generatingPdf}
+                variant="outline"
+                size="sm"
+                className="ml-4"
+              >
+                {generatingPdf ? "Generating..." : "📄 Download Report"}
+              </Button>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
