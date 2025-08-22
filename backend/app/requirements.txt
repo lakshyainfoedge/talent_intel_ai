@@ -1,0 +1,15 @@
+streamlit
+python-dotenv
+requests
+beautifulsoup4
+numpy
+scikit-learn
+pdfminer.six
+python-docx
+google-cloud-aiplatform
+sqlalchemy
+pydantic
+uvicorn
+fastapi
+python-multipart
+motor
