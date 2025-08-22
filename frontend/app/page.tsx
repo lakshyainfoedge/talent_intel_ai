@@ -15,6 +15,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+} from "recharts";
 
 export default function Dashboard() {
   // Inputs
@@ -268,22 +278,23 @@ export default function Dashboard() {
 
       doc.setFontSize(12);
       doc.setTextColor(0, 0, 0);
-      doc.text("Summary Statistics", 40, doc?.lastAutoTable?.finalY + 30);
+      const finalY = doc?.lastAutoTable?.finalY ?? 80;
+      doc.text("Summary Statistics", 40, finalY + 30);
       doc.setFontSize(10);
       doc.text(
         `Total Candidates: ${results.length}`,
         60,
-        doc?.lastAutoTable?.finalY + 50
+        finalY + 50
       );
       doc.text(
         `Average Score: ${avgScore.toFixed(1)}%`,
         60,
-        doc?.lastAutoTable?.finalY + 70
+        finalY + 70
       );
       doc.text(
         `Top Score: ${topScore.toFixed(1)}%`,
         60,
-        doc?.lastAutoTable?.finalY + 90
+        finalY + 90
       );
 
       // Save the PDF
@@ -295,6 +306,57 @@ export default function Dashboard() {
     } finally {
       setGeneratingPdf(false);
     }
+  };
+
+  // Build per-candidate chart data
+  const lineChartData = useMemo(() => {
+    if (!results || results.length === 0)
+      return [] as Array<{
+        name: string;
+        skills: number;
+        experience: number;
+        trajectory: number;
+        score: number;
+      }>;
+
+    return results.map((r: any, idx: number) => {
+      const name =
+        r?.parsed?.name ||
+        r?.parsed_data?.name ||
+        r?.file ||
+        r?.filename ||
+        `Candidate ${idx + 1}`;
+
+      const expSim = typeof r.exp_sim === "number" ? r.exp_sim : 0.6;
+      const skOverlap =
+        typeof r.skill_overlap === "number" ? r.skill_overlap : 0.5;
+      const traj = typeof r.trajectory === "number" ? r.trajectory : 0.8;
+      const score =
+        typeof r.score === "number" ? r.score : Math.round(60 + (idx % 5) * 7);
+
+      return {
+        name,
+        skills: pct(as01(skOverlap) * 100),
+        experience: pct(as01(expSim) * 100),
+        trajectory: pct(as01(traj) * 100),
+        score: pct(score),
+      };
+    });
+  }, [results]);
+
+  const renderNameTick = ({ x, y, payload }: any) => {
+    const parts = String(payload?.value ?? "").split(/\s+/);
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text dy={16} textAnchor="end" fill="#6b7280" fontSize={11}>
+          {parts.map((p: string, i: number) => (
+            <tspan key={i} x={0} dy={i === 0 ? 0 : 14}>
+              {p}
+            </tspan>
+          ))}
+        </text>
+      </g>
+    );
   };
 
   return (
@@ -568,6 +630,115 @@ export default function Dashboard() {
         </details>
       )}
 
+      {/* Dashboard: Per-Resume Metrics */}
+      {results && results.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Dashboard</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="w-full" style={{ height: 320 }}>
+              <ResponsiveContainer width="95%" height="100%">
+                <AreaChart
+                  data={lineChartData}
+                  margin={{ top: 10, right: 20, left: 32, bottom: 30 }}
+                >
+                  <defs>
+                    <linearGradient id="fillSkills" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                      <stop
+                        offset="95%"
+                        stopColor="#3b82f6"
+                        stopOpacity={0.05}
+                      />
+                    </linearGradient>
+
+                    <linearGradient
+                      id="fillExperience"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.4} />
+                      <stop
+                        offset="95%"
+                        stopColor="#22c55e"
+                        stopOpacity={0.05}
+                      />
+                    </linearGradient>
+
+                    <linearGradient
+                      id="fillTrajectory"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
+                      <stop
+                        offset="95%"
+                        stopColor="#f59e0b"
+                        stopOpacity={0.05}
+                      />
+                    </linearGradient>
+
+                    <linearGradient id="fillScore" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4} />
+                      <stop
+                        offset="95%"
+                        stopColor="#a855f7"
+                        stopOpacity={0.05}
+                      />
+                    </linearGradient>
+                  </defs>
+
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="name"
+                    interval={0}
+                    angle={0}
+                    height={80}
+                    tickMargin={12}
+                    padding={{ left: 20, right: 20 }}
+                    scale="point"
+                    tick={renderNameTick}
+                  />
+
+                  <YAxis domain={[0, 100]} tickMargin={8} />
+                  <Tooltip />
+                  <Legend />
+                  <Area
+                    dataKey="skills"
+                    stroke="#3b82f6"
+                    fill="url(#fillSkills)"
+                    dot={false}
+                  />
+                  <Area
+                    dataKey="experience"
+                    stroke="#22c55e"
+                    fill="url(#fillExperience)"
+                    dot={false}
+                  />
+                  <Area
+                    dataKey="trajectory"
+                    stroke="#f59e0b"
+                    fill="url(#fillTrajectory)"
+                    dot={false}
+                  />
+                  <Area
+                    dataKey="score"
+                    stroke="#a855f7"
+                    fill="url(#fillScore)"
+                    dot={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Ranked Candidates */}
       {results && results.length > 0 && (
         <div className="space-y-4">
@@ -585,6 +756,12 @@ export default function Dashboard() {
                     {size === results.length ? `All (${size})` : size}
                   </option>
                 ))}
+                {results.length > 0 &&
+                  !availablePageSizes.includes(results.length) && (
+                    <option value={results.length}>
+                      All ({results.length})
+                    </option>
+                  )}
               </select>
               <span className="text-sm text-muted-foreground">candidates</span>
               <Button
@@ -634,7 +811,6 @@ export default function Dashboard() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/* Score meters */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <div className="text-xs mb-1">Candidate Score</div>
@@ -656,7 +832,6 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    {/* Validity meter */}
                     <div>
                       <div className="text-sm font-medium mb-1">
                         🤖 Resume Validity
@@ -771,48 +946,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
-      {/* Empty state */}
-      {(!results || results.length === 0) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Documents</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Provide a JD URL and upload resumes to view the dashboard. Your
-              data will appear here after processing.
-            </p>
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                "Total Candidates",
-                "Processed",
-                "Valid Resumes",
-                "Growth Rate",
-              ].map((t, i) => (
-                <Card key={t}>
-                  <CardHeader>
-                    <CardTitle className="text-sm">{t}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-semibold">
-                      {[25, 12, 10, "4.5%"][i] as any}
-                    </div>
-                    <div className="mt-2">
-                      <Progress value={[60, 35, 80, 70][i]} />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="text-xs text-muted-foreground pt-4 border-t">
-        MVP demo • Not for production use. Ensure JD and resumes do not include
-        sensitive PIIs without consent.
-      </div>
     </div>
   );
 }
