@@ -1,0 +1,17 @@
+streamlit
+python-dotenv
+requests
+beautifulsoup4
+numpy
+scikit-learn
+pdfminer.six
+python-docx
+google-cloud-aiplatform==1.44.0
+sentence-transformers
+sqlalchemy
+pydantic
+uvicorn
+fastapi
+pymongo
+motor
+pydantic-settings

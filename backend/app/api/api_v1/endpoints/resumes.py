@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 from dotenv import load_dotenv
 import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from vertexai.preview.generative_models import GenerativeModel, Part
 
 from app.models.base import Resume
 from app.db.mongodb import MongoDB, get_db

@@ -1,36 +1,127 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Talent Intel AI - Frontend
 
-## Getting Started
+A modern React frontend for the AI-powered talent intelligence platform that helps recruiters find the best candidates by analyzing resumes against job descriptions.
 
-First, run the development server:
+## Features
+
+- **3-Step Wizard Interface**: Job Description → Resume Upload → Results Analysis
+- **AI-Powered Job Analysis**: Extract requirements from job posting URLs
+- **Drag-and-Drop Resume Upload**: Support for PDF, DOCX, DOC, and TXT files
+- **Smart Candidate Ranking**: Multi-factor scoring with AI validation
+- **Interactive Data Visualization**: Charts and graphs for candidate analysis
+- **Modern UI/UX**: Built with Tailwind CSS and Heroicons
+
+## Prerequisites
+
+- Node.js 16+ and npm
+- Backend API running on `http://localhost:8000`
+
+## Installation
+
+1. **Install dependencies:**
+
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+2. **Configure environment (optional):**
+   Create `.env` file to customize API URL:
+   ```env
+   REACT_APP_API_URL=http://localhost:8000/api/v1
+   ```
+
+## Running the Application
+
+1. **Start the development server:**
+
+   ```bash
+   npm start
+   ```
+
+2. **Open your browser:**
+   Navigate to `http://localhost:3000`
+
+## Usage Guide
+
+### Step 1: Job Description Analysis
+
+- Paste a job posting URL (LinkedIn, Indeed, Glassdoor, etc.)
+- AI extracts skills, requirements, and responsibilities
+- Creates a comprehensive job profile for matching
+
+### Step 2: Resume Upload
+
+- Drag and drop multiple resume files
+- Supports PDF, DOCX, DOC, and TXT formats
+- AI parses each resume for skills and experience
+- Maximum file size: 10MB per resume
+
+### Step 3: Results Analysis
+
+- View ranked candidates with match scores
+- Interactive charts showing candidate distribution
+- Detailed breakdown of experience, skills, and level matching
+- AI validation scores to detect generated content
+- Click on candidates for detailed analysis
+
+## Key Components
+
+- **`App.tsx`**: Main application with wizard state management
+- **`JobDescriptionStep.tsx`**: URL input and job analysis
+- **`ResumeUploadStep.tsx`**: File upload with drag-and-drop
+- **`ResultsStep.tsx`**: Candidate rankings and visualizations
+- **`ProgressBar.tsx`**: Step navigation indicator
+- **`services/api.ts`**: Backend API integration
+
+## API Integration
+
+The frontend connects to your FastAPI backend through these endpoints:
+
+- `POST /api/v1/job-descriptions` - Create job description from URL
+- `POST /api/v1/resumes/upload/batch` - Upload multiple resumes
+- `POST /api/v1/scores/batch-score` - Calculate candidate scores
+
+## Building for Production
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The build artifacts will be stored in the `build/` directory.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Technology Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **React 18** with TypeScript
+- **Tailwind CSS** for styling
+- **Heroicons** for icons
+- **React Dropzone** for file uploads
+- **Recharts** for data visualization
+- **React Hot Toast** for notifications
+- **Axios** for API calls
 
-## Learn More
+## Troubleshooting
 
-To learn more about Next.js, take a look at the following resources:
+### Common Issues
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **API Connection Errors**
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   - Ensure backend is running on `http://localhost:8000`
+   - Check CORS settings in backend
+   - Verify API endpoints are accessible
 
-## Deploy on Vercel
+2. **File Upload Issues**
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+   - Check file size limits (10MB max)
+   - Ensure supported file formats (PDF, DOCX, DOC, TXT)
+   - Verify backend file processing endpoints
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+3. **Build Errors**
+   - Clear node_modules: `rm -rf node_modules && npm install`
+   - Check TypeScript errors: `npm run build`
+
+### Development Tips
+
+- Use browser dev tools to monitor API requests
+- Check console for error messages
+- Enable verbose logging in `api.ts` for debugging

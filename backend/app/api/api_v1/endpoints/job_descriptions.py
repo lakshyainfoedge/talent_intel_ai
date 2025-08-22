@@ -8,7 +8,7 @@ from bson import ObjectId
 import os
 from dotenv import load_dotenv
 import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from vertexai.preview.generative_models import GenerativeModel, Part
 import json
 
 from app.models.base import JobDescription
@@ -155,5 +155,3 @@ async def list_job_descriptions(
     async for doc in cursor:
         jds.append(db.serialize_doc(doc))
     return jds
-
-

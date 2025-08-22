@@ -6,7 +6,7 @@ from app.models.base import Score
 from app.db.mongodb import MongoDB, get_db
 from app.core.config import settings
 import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from vertexai.preview.generative_models import GenerativeModel, Part
 import os
 import hashlib
 import json
