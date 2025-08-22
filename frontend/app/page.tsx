@@ -24,20 +24,29 @@ export default function Dashboard() {
   const [results, setResults] = useState<any[]>([]);
   const [jdStruct, setJdStruct] = useState<any | null>(null);
   const [candidatesToShow, setCandidatesToShow] = useState<number>(10);
-  
+
   // Available page sizes that don't exceed results length
   const availablePageSizes = useMemo(() => {
     const sizes = [10, 20, 50, 100, 200];
-    const maxSize = results.length || 10;
-    return sizes.filter(size => size <= maxSize);
-  }, [results.length]);
-  
+    if (!results || results.length === 0) return sizes;
+
+    const maxSize = Math.max(...sizes.filter((size) => size <= results.length));
+    const filteredSizes = sizes.filter((size) => size <= maxSize);
+    return [
+      ...new Set([...filteredSizes, results.length].sort((a, b) => a - b)),
+    ];
+  }, [results]);
+
   // Ensure current selection is valid
   useEffect(() => {
-    if (results.length > 0 && candidatesToShow > results.length) {
+    if (
+      results &&
+      results.length > 0 &&
+      (candidatesToShow > results.length || candidatesToShow === 0)
+    ) {
       setCandidatesToShow(results.length);
     }
-  }, [results.length, candidatesToShow]);
+  }, [results, candidatesToShow]);
 
   // Weights (normalized like Streamlit)
   const [wExp, setWExp] = useState(0.5);
@@ -131,7 +140,9 @@ export default function Dashboard() {
         }
       ).then((r) => r.json());
 
-      setResults(Array.isArray(scored) ? scored : scored?.data ?? []);
+      const resultsArray = Array.isArray(scored) ? scored : scored?.data || [];
+      console.log("Scored results:", resultsArray);
+      setResults(resultsArray);
     } catch (err) {
       console.error(err);
     } finally {
@@ -395,14 +406,9 @@ export default function Dashboard() {
               >
                 {availablePageSizes.map((size) => (
                   <option key={size} value={size}>
-                    {size}
+                    {size === results.length ? `All (${size})` : size}
                   </option>
                 ))}
-                {results.length > 0 && !availablePageSizes.includes(results.length) && (
-                  <option value={results.length}>
-                    All ({results.length})
-                  </option>
-                )}
               </select>
               <span className="text-sm text-muted-foreground">candidates</span>
             </div>
