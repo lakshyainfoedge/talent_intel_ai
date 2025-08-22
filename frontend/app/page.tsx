@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,21 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
   const [jdStruct, setJdStruct] = useState<any | null>(null);
+  const [candidatesToShow, setCandidatesToShow] = useState<number>(10);
+  
+  // Available page sizes that don't exceed results length
+  const availablePageSizes = useMemo(() => {
+    const sizes = [10, 20, 50, 100, 200];
+    const maxSize = results.length || 10;
+    return sizes.filter(size => size <= maxSize);
+  }, [results.length]);
+  
+  // Ensure current selection is valid
+  useEffect(() => {
+    if (results.length > 0 && candidatesToShow > results.length) {
+      setCandidatesToShow(results.length);
+    }
+  }, [results.length, candidatesToShow]);
 
   // Weights (normalized like Streamlit)
   const [wExp, setWExp] = useState(0.5);
@@ -68,7 +83,7 @@ export default function Dashboard() {
       setStatus("Analyzing JD…");
       // 1) Parse JD via local FastAPI
       const jdRes = await fetch(
-        "http://localhost:8002/api/v1/job-descriptions",
+        "http://localhost:8000/api/v1/job-descriptions",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -85,7 +100,7 @@ export default function Dashboard() {
       const formData = new FormData();
       files.forEach((f) => formData.append("files", f));
       const resumes = await fetch(
-        "http://localhost:8002/api/v1/resumes/upload/batch",
+        "http://localhost:8000/api/v1/resumes/upload/batch",
         {
           method: "POST",
           body: formData,
@@ -102,13 +117,13 @@ export default function Dashboard() {
         .map((r: any) => r?._id)
         .filter(Boolean);
       const jdId = (jd as any)?._id ?? (jd as any)?.id;
-      console.log(resumeIds, jdId,weights ,"hiiiiii jd");
+      console.log(resumeIds, jdId, weights, "hiiiiii jd");
       if (!jdId) {
         console.warn("No JD id found in response", jd);
       }
-      
+
       const scored = await fetch(
-        "http://localhost:8002/api/v1/scores/batch-score",
+        "http://localhost:8000/api/v1/scores/batch-score",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -159,25 +174,11 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl md:text-3xl font-semibold flex items-center gap-2">
             <span>🛰️ Talent Intel AI</span>
-            <span className="text-sm font-normal text-muted-foreground">
-              MVP • Next.js + shadcn
-            </span>
           </h1>
           <p className="text-sm text-muted-foreground">
             Paste a JD URL, upload resumes, and view ranked candidates with
             explainable scores.
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={clearAll} disabled={loading}>
-            Clear
-          </Button>
-          <Button
-            onClick={handleProcess}
-            disabled={loading || !jdUrl || files.length === 0}
-          >
-            {loading ? "Processing…" : "⚡ Process Candidates"}
-          </Button>
         </div>
       </div>
 
@@ -348,26 +349,66 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* JD Structure (optional) */}
+      {/* JD Structure (collapsible) */}
       {jdStruct && (
-        <Card>
-          <CardHeader>
-            <CardTitle>📋 JD Structure</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-xs whitespace-pre-wrap leading-5 bg-muted/40 p-3 rounded-md overflow-x-auto">
-              {JSON.stringify(jdStruct, null, 2)}
-            </pre>
-          </CardContent>
-        </Card>
+        <details className="group [&_svg]:open:rotate-180">
+          <summary className="flex cursor-pointer list-none items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted/50">
+            <div className="flex items-center gap-2">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4 transition-transform duration-200"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+              <span className="text-lg font-medium">📋 JD Structure</span>
+            </div>
+          </summary>
+          <Card className="mt-2">
+            <CardContent className="p-4">
+              <pre className="text-xs whitespace-pre-wrap leading-5 bg-muted/40 p-3 rounded-md overflow-x-auto">
+                {JSON.stringify(jdStruct, null, 2)}
+              </pre>
+            </CardContent>
+          </Card>
+        </details>
       )}
 
       {/* Ranked Candidates */}
       {results && results.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold">🏆 Ranked Candidates</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">🏆 Ranked Candidates</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Show:</span>
+              <select
+                value={candidatesToShow}
+                onChange={(e) => setCandidatesToShow(Number(e.target.value))}
+                className="rounded-md border p-1 text-sm bg-background"
+              >
+                {availablePageSizes.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+                {results.length > 0 && !availablePageSizes.includes(results.length) && (
+                  <option value={results.length}>
+                    All ({results.length})
+                  </option>
+                )}
+              </select>
+              <span className="text-sm text-muted-foreground">candidates</span>
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {results.map((r: any, idx: number) => {
+            {results.slice(0, candidatesToShow).map((r: any, idx: number) => {
               // Try to read fields if present; otherwise fallback
               const score =
                 typeof r.score === "number"
@@ -395,7 +436,6 @@ export default function Dashboard() {
                     <CardTitle className="flex items-center justify-between">
                       <span>
                         #{idx + 1} — {name}
-                        {fileLabel ? ` (${fileLabel})` : ""}
                       </span>
                       <span className="text-sm text-muted-foreground">
                         Score {pct(score)} / 100
