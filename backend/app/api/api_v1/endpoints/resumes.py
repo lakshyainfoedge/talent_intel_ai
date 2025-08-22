@@ -22,16 +22,34 @@ LOCATION = os.getenv("GOOGLE_CLOUD_REGION", "us-central1")
 GEMINI_MODEL_NAME = "gemini-2.0-flash"
 
 RESUME_PROMPT = """
-You are an expert resume parser. Given resume text, return STRICT JSON:
+You are an expert resume parser. Extract structured data from the provided resume TEXT with best-effort inference.
+
+Output STRICT JSON only (no markdown, no commentary) with this exact schema:
 {
   "name": string | null,
-  "titles": string[] (role titles found),
+  "titles": string[],
   "seniority": one of ["intern","junior","mid","senior","lead","manager","director","executive"],
-  "skills": string[] (max 50, lowercase tokens),
-  "experience_bullets": string[] (concise bullets describing actual work done),
+  "skills": string[],
+  "experience_bullets": string[],
   "education": string[]
 }
-Only output JSON. No markdown. No commentary.
+
+Rules:
+- Prefer real values over null. Infer when reasonably clear; use null only if truly absent.
+- "titles": collect distinct role titles (e.g., "software engineer", "data scientist"). Keep 1-5 most representative, lowercase.
+- "seniority": infer from titles, years, scope (e.g., intern, junior, mid, senior, lead, manager, director, executive). Default to "mid" if unclear.
+- "skills": normalize to lowercase, deduplicate, max 50 terms. Prefer hard skills, technologies, frameworks, languages, tools.
+- "experience_bullets": concise, action-oriented bullets capturing concrete work (avoid fluff). 3-10 bullets total across roles.
+- "education": degrees and institutions (e.g., "B.Tech, IIT Bombay", "MS Computer Science, Stanford").
+- Robustly handle PDFs and noisy OCR (broken lines, headers/footers, columns). Ignore contact headers unless informative.
+- Do not invent employers or dates; omit rather than hallucinate.
+
+Examples (illustrative; do not copy):
+Input snippet: "Senior Software Engineer at Acme (2019-2023). Built microservices in Go, Kubernetes, GCP. Led 4 engineers."
+Possible fields: titles=["senior software engineer"], seniority="senior", skills=["go","kubernetes","gcp","microservices"],
+experience_bullets=["built microservices in go on kubernetes","led team of 4 engineers"].
+
+Return ONLY the JSON object.
 """
 
 def parse_resume_with_gemini(resume_text: str) -> dict:
