@@ -26,43 +26,59 @@ import {
   Area,
 } from "recharts";
 
+interface ParsedInfo {
+  name?: string;
+  skills?: string[];
+  titles?: string[];
+}
+
+interface AIInfo {
+  ai_likelihood_percent?: number;
+}
+
+interface Result {
+  _id?: string;
+  score?: number;
+  exp_sim?: number;
+  skill_overlap?: number;
+  trajectory?: number;
+  ai_pct?: number;
+  parsed?: ParsedInfo;
+  parsed_data?: ParsedInfo;
+  file?: string;
+  filename?: string;
+  ai?: AIInfo;
+  ai_struct?: AIInfo;
+}
+
+interface JobDescription {
+  _id?: string;
+  id?: string;
+}
+
+interface Resume {
+  _id?: string;
+}
+
+interface RenderNameTickProps {
+  x?: number;
+  y?: number;
+  payload?: {
+    value: string;
+  };
+}
+
 export default function Dashboard() {
   // Inputs
   const [jdUrl, setJdUrl] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
-  // Refs
-  const reportRef = useRef<HTMLDivElement>(null);
-
   // UI / Data
   const [loading, setLoading] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
-  const [jdStruct, setJdStruct] = useState<any | null>(null);
+  const [results, setResults] = useState<Result[]>([]);
+  const [jdStruct, setJdStruct] = useState<JobDescription | null>(null);
   const [candidatesToShow, setCandidatesToShow] = useState<number>(10);
-
-  // Available page sizes that don't exceed results length
-  const availablePageSizes = useMemo(() => {
-    const sizes = [10, 20, 50, 100, 200];
-    if (!results || results.length === 0) return sizes;
-
-    const maxSize = Math.max(...sizes.filter((size) => size <= results.length));
-    const filteredSizes = sizes.filter((size) => size <= maxSize);
-    return [
-      ...new Set([...filteredSizes, results.length].sort((a, b) => a - b)),
-    ];
-  }, [results]);
-
-  // Ensure current selection is valid
-  useEffect(() => {
-    if (
-      results &&
-      results.length > 0 &&
-      (candidatesToShow > results.length || candidatesToShow === 0)
-    ) {
-      setCandidatesToShow(results.length);
-    }
-  }, [results, candidatesToShow]);
 
   // Weights (normalized like Streamlit)
   const [wExp, setWExp] = useState(0.5);
@@ -164,13 +180,13 @@ export default function Dashboard() {
       // 3) Score candidates (pass normalized weights)
       setPhase("score");
       setStatus("Scoring candidates…");
-      const resumeArr: any[] = Array.isArray(resumes)
+      const resumeArr: Resume[] = Array.isArray(resumes)
         ? resumes
         : resumes?.data ?? [];
       const resumeIds: string[] = resumeArr
-        .map((r: any) => r?._id)
-        .filter(Boolean);
-      const jdId = (jd as any)?._id ?? (jd as any)?.id;
+        .map((r: Resume) => r?._id)
+        .filter((id): id is string => !!id);
+      const jdId = jdStruct?._id ?? jdStruct?.id;
       console.log(resumeIds, jdId, weights, "hiiiiii jd");
       if (!jdId) {
         console.warn("No JD id found in response", jd);
@@ -229,7 +245,7 @@ export default function Dashboard() {
         "Trajectory",
       ];
 
-      const tableRows = results.map((r: any, idx: number) => {
+      const tableRows = results.map((r: Result, idx: number) => {
         const name =
           r?.parsed?.name || r?.parsed_data?.name || `Candidate ${idx + 1}`;
         const score = typeof r.score === "number" ? r.score : 0;
@@ -274,28 +290,16 @@ export default function Dashboard() {
       // Add summary statistics
       const avgScore =
         results.reduce((acc, r) => acc + (r.score || 0), 0) / results.length;
-      const topScore = Math.max(...results.map((r: any) => r.score || 0));
+      const topScore = Math.max(...results.map((r: Result) => r.score || 0));
 
       doc.setFontSize(12);
       doc.setTextColor(0, 0, 0);
       const finalY = doc?.lastAutoTable?.finalY ?? 80;
       doc.text("Summary Statistics", 40, finalY + 30);
       doc.setFontSize(10);
-      doc.text(
-        `Total Candidates: ${results.length}`,
-        60,
-        finalY + 50
-      );
-      doc.text(
-        `Average Score: ${avgScore.toFixed(1)}%`,
-        60,
-        finalY + 70
-      );
-      doc.text(
-        `Top Score: ${topScore.toFixed(1)}%`,
-        60,
-        finalY + 90
-      );
+      doc.text(`Total Candidates: ${results.length}`, 60, finalY + 50);
+      doc.text(`Average Score: ${avgScore.toFixed(1)}%`, 60, finalY + 70);
+      doc.text(`Top Score: ${topScore.toFixed(1)}%`, 60, finalY + 90);
 
       // Save the PDF
       doc.save(
@@ -319,7 +323,7 @@ export default function Dashboard() {
         score: number;
       }>;
 
-    return results.map((r: any, idx: number) => {
+    return results.map((r: Result, idx: number) => {
       const name =
         r?.parsed?.name ||
         r?.parsed_data?.name ||
@@ -344,7 +348,7 @@ export default function Dashboard() {
     });
   }, [results]);
 
-  const renderNameTick = ({ x, y, payload }: any) => {
+  const renderNameTick = ({ x, y, payload }: RenderNameTickProps) => {
     const parts = String(payload?.value ?? "").split(/\s+/);
     return (
       <g transform={`translate(${x},${y})`}>
@@ -751,17 +755,11 @@ export default function Dashboard() {
                 onChange={(e) => setCandidatesToShow(Number(e.target.value))}
                 className="rounded-md border p-1 text-sm bg-background"
               >
-                {availablePageSizes.map((size) => (
-                  <option key={size} value={size}>
-                    {size === results.length ? `All (${size})` : size}
+                {results.map((_, i) => (
+                  <option key={i} value={i + 1}>
+                    {i + 1 === results.length ? `All (${i + 1})` : i + 1}
                   </option>
                 ))}
-                {results.length > 0 &&
-                  !availablePageSizes.includes(results.length) && (
-                    <option value={results.length}>
-                      All ({results.length})
-                    </option>
-                  )}
               </select>
               <span className="text-sm text-muted-foreground">candidates</span>
               <Button
@@ -776,173 +774,176 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {results.slice(0, candidatesToShow).map((r: any, idx: number) => {
-              // Try to read fields if present; otherwise fallback
-              const score =
-                typeof r.score === "number"
-                  ? r.score
-                  : Math.round(60 + (idx % 5) * 7);
-              const expSim = typeof r.exp_sim === "number" ? r.exp_sim : 0.6;
-              const skOverlap =
-                typeof r.skill_overlap === "number" ? r.skill_overlap : 0.5;
-              const traj =
-                typeof r.trajectory === "number" ? r.trajectory : 0.8;
-              const aiPct = typeof r.ai_pct === "number" ? r.ai_pct : 12;
-              const validity = 100 - aiPct;
+            {results
+              .slice(0, candidatesToShow)
+              .map((r: Result, idx: number) => {
+                // Try to read fields if present; otherwise fallback
+                const score =
+                  typeof r.score === "number"
+                    ? r.score
+                    : Math.round(60 + (idx % 5) * 7);
+                const expSim = typeof r.exp_sim === "number" ? r.exp_sim : 0.6;
+                const skOverlap =
+                  typeof r.skill_overlap === "number" ? r.skill_overlap : 0.5;
+                const traj =
+                  typeof r.trajectory === "number" ? r.trajectory : 0.8;
+                const aiPct = typeof r.ai_pct === "number" ? r.ai_pct : 12;
+                const validity = 100 - aiPct;
 
-              const name =
-                r?.parsed?.name ||
-                r?.parsed_data?.name ||
-                r?.file ||
-                r?.filename ||
-                `Candidate ${idx + 1}`;
-              const fileLabel = r?.file || r?.filename || "";
+                const name =
+                  r?.parsed?.name ||
+                  r?.parsed_data?.name ||
+                  `Candidate ${idx + 1}`;
 
-              return (
-                <Card key={r._id ?? idx} className="overflow-hidden">
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <span>
-                        #{idx + 1} — {name}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        Score {pct(score)} / 100
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-xs mb-1">Candidate Score</div>
-                        <Progress value={pct(score)} />
-                      </div>
-                      <div>
-                        <div className="text-xs mb-1">
-                          Experience Similarity
+                return (
+                  <Card key={r._id ?? idx} className="overflow-hidden">
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <span>
+                          #{idx + 1} — {name}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          Score {pct(score)} / 100
+                        </span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-xs mb-1">Candidate Score</div>
+                          <Progress value={pct(score)} />
                         </div>
-                        <Progress value={pct(as01(expSim) * 100)} />
+                        <div>
+                          <div className="text-xs mb-1">
+                            Experience Similarity
+                          </div>
+                          <Progress value={pct(as01(expSim) * 100)} />
+                        </div>
+                        <div>
+                          <div className="text-xs mb-1">Skill Match</div>
+                          <Progress value={pct(as01(skOverlap) * 100)} />
+                        </div>
+                        <div>
+                          <div className="text-xs mb-1">
+                            Trajectory Alignment
+                          </div>
+                          <Progress value={pct(as01(traj) * 100)} />
+                        </div>
                       </div>
+
                       <div>
-                        <div className="text-xs mb-1">Skill Match</div>
-                        <Progress value={pct(as01(skOverlap) * 100)} />
+                        <div className="text-sm font-medium mb-1">
+                          🤖 Resume Validity
+                        </div>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span>Validity (higher is better)</span>
+                          <span>{pct(validity)}%</span>
+                        </div>
+                        <Progress value={pct(validity)} />
                       </div>
-                      <div>
-                        <div className="text-xs mb-1">Trajectory Alignment</div>
-                        <Progress value={pct(as01(traj) * 100)} />
+
+                      {/* Quick facts */}
+                      <div className="rounded-md border p-3 bg-card/30">
+                        <div className="text-xs font-medium mb-2">
+                          Quick facts
+                        </div>
+                        <ul className="text-xs space-y-1 list-disc pl-5">
+                          <li>
+                            Top skills:{" "}
+                            {(r?.parsed?.skills || r?.parsed_data?.skills || [])
+                              .slice(0, 6)
+                              .join(", ")}
+                          </li>
+                          <li>
+                            Titles:{" "}
+                            {(r?.parsed?.titles || r?.parsed_data?.titles || [])
+                              .slice(0, 3)
+                              .join(", ")}
+                          </li>
+                        </ul>
                       </div>
-                    </div>
 
-                    <div>
-                      <div className="text-sm font-medium mb-1">
-                        🤖 Resume Validity
+                      {/* Expanders */}
+                      <details className="rounded-md border p-3 bg-muted/40">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          AI-detection details
+                        </summary>
+                        <pre className="text-xs mt-2 whitespace-pre-wrap leading-5">
+                          {JSON.stringify(
+                            r.ai ||
+                              r.ai_struct || { ai_likelihood_percent: aiPct },
+                            null,
+                            2
+                          )}
+                        </pre>
+                      </details>
+
+                      <details className="rounded-md border p-3 bg-muted/40">
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Parsed Resume (structured)
+                        </summary>
+                        <pre className="text-xs mt-2 whitespace-pre-wrap leading-5">
+                          {JSON.stringify(
+                            r.parsed || r.parsed_data || {},
+                            null,
+                            2
+                          )}
+                        </pre>
+                      </details>
+
+                      {/* Feedback buttons */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setFeedbackCount((v) => v + 1);
+                            // Nudge strongest signal weight
+                            const trio: Array<[keyof typeof weights, number]> =
+                              [
+                                ["experience", as01(expSim)],
+                                ["skills", as01(skOverlap)],
+                                ["trajectory", as01(traj)],
+                              ];
+                            trio.sort((a, b) => b[1] - a[1]);
+                            const strongest = trio[0][0];
+                            if (strongest === "experience")
+                              setWExp((v) => Math.min(1, v * 1.2));
+                            if (strongest === "skills")
+                              setWSk((v) => Math.min(1, v * 1.2));
+                            if (strongest === "trajectory")
+                              setWTr((v) => Math.min(1, v * 1.2));
+                          }}
+                        >
+                          👍 Relevant — boost profile
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setFeedbackCount((v) => v + 1);
+                            // Reduce weakest signal weight
+                            const trio: Array<[keyof typeof weights, number]> =
+                              [
+                                ["experience", as01(expSim)],
+                                ["skills", as01(skOverlap)],
+                                ["trajectory", as01(traj)],
+                              ];
+                            trio.sort((a, b) => a[1] - b[1]);
+                            const weakest = trio[0][0];
+                            if (weakest === "experience")
+                              setWExp((v) => Math.max(0.05, v * 0.8));
+                            if (weakest === "skills")
+                              setWSk((v) => Math.max(0.05, v * 0.8));
+                            if (weakest === "trajectory")
+                              setWTr((v) => Math.max(0.05, v * 0.8));
+                          }}
+                        >
+                          👎 Not relevant — reduce similar
+                        </Button>
                       </div>
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span>Validity (higher is better)</span>
-                        <span>{pct(validity)}%</span>
-                      </div>
-                      <Progress value={pct(validity)} />
-                    </div>
-
-                    {/* Quick facts */}
-                    <div className="rounded-md border p-3 bg-card/30">
-                      <div className="text-xs font-medium mb-2">
-                        Quick facts
-                      </div>
-                      <ul className="text-xs space-y-1 list-disc pl-5">
-                        <li>
-                          Top skills:{" "}
-                          {(r?.parsed?.skills || r?.parsed_data?.skills || [])
-                            .slice(0, 6)
-                            .join(", ")}
-                        </li>
-                        <li>
-                          Titles:{" "}
-                          {(r?.parsed?.titles || r?.parsed_data?.titles || [])
-                            .slice(0, 3)
-                            .join(", ")}
-                        </li>
-                      </ul>
-                    </div>
-
-                    {/* Expanders */}
-                    <details className="rounded-md border p-3 bg-muted/40">
-                      <summary className="cursor-pointer text-sm font-medium">
-                        AI-detection details
-                      </summary>
-                      <pre className="text-xs mt-2 whitespace-pre-wrap leading-5">
-                        {JSON.stringify(
-                          r.ai ||
-                            r.ai_struct || { ai_likelihood_percent: aiPct },
-                          null,
-                          2
-                        )}
-                      </pre>
-                    </details>
-
-                    <details className="rounded-md border p-3 bg-muted/40">
-                      <summary className="cursor-pointer text-sm font-medium">
-                        Parsed Resume (structured)
-                      </summary>
-                      <pre className="text-xs mt-2 whitespace-pre-wrap leading-5">
-                        {JSON.stringify(
-                          r.parsed || r.parsed_data || {},
-                          null,
-                          2
-                        )}
-                      </pre>
-                    </details>
-
-                    {/* Feedback buttons */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          setFeedbackCount((v) => v + 1);
-                          // Nudge strongest signal weight
-                          const trio: Array<[keyof typeof weights, number]> = [
-                            ["experience", as01(expSim)],
-                            ["skills", as01(skOverlap)],
-                            ["trajectory", as01(traj)],
-                          ];
-                          trio.sort((a, b) => b[1] - a[1]);
-                          const strongest = trio[0][0];
-                          if (strongest === "experience")
-                            setWExp((v) => Math.min(1, v * 1.2));
-                          if (strongest === "skills")
-                            setWSk((v) => Math.min(1, v * 1.2));
-                          if (strongest === "trajectory")
-                            setWTr((v) => Math.min(1, v * 1.2));
-                        }}
-                      >
-                        👍 Relevant — boost profile
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setFeedbackCount((v) => v + 1);
-                          // Reduce weakest signal weight
-                          const trio: Array<[keyof typeof weights, number]> = [
-                            ["experience", as01(expSim)],
-                            ["skills", as01(skOverlap)],
-                            ["trajectory", as01(traj)],
-                          ];
-                          trio.sort((a, b) => a[1] - b[1]);
-                          const weakest = trio[0][0];
-                          if (weakest === "experience")
-                            setWExp((v) => Math.max(0.05, v * 0.8));
-                          if (weakest === "skills")
-                            setWSk((v) => Math.max(0.05, v * 0.8));
-                          if (weakest === "trajectory")
-                            setWTr((v) => Math.max(0.05, v * 0.8));
-                        }}
-                      >
-                        👎 Not relevant — reduce similar
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                    </CardContent>
+                  </Card>
+                );
+              })}
           </div>
         </div>
       )}
